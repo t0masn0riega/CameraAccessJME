@@ -1,0 +1,5 @@
+/app/libs/temp
+/app/build
+.idea
+.gradle
+build/
