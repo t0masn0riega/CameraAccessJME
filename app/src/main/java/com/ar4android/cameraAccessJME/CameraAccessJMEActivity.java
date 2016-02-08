@@ -25,6 +25,7 @@ import android.view.ViewGroup;
 //import com.jme3.system.android.AndroidConfigChooser.ConfigType;
 import com.jme3.system.android.AndroidConfigChooser.*;
 import com.jme3.texture.Image;
+import com.jme3.texture.image.ColorSpace;
 
 
 public class CameraAccessJMEActivity extends AndroidHarness {
@@ -214,7 +215,7 @@ public class CameraAccessJMEActivity extends AndroidHarness {
 		mPreviewBufferRGB565 = new byte[bufferSizeRGB565];
 		mPreviewByteBufferRGB565 = ByteBuffer.allocateDirect(mPreviewBufferRGB565.length);
 		cameraJMEImageRGB565 = new Image(Image.Format.RGB565, mPreviewWidth,
-				mPreviewHeight, mPreviewByteBufferRGB565);
+				mPreviewHeight, mPreviewByteBufferRGB565, ColorSpace.Linear);
 	}
 
 	public static void yCbCrToRGB565(byte[] YCBCRs, int width, int height,
