@@ -11,11 +11,11 @@ package com.ar4android.cameraAccessJME;
 
 import android.app.Activity;
 import android.content.Context;
-import android.hardware.Camera;
 import android.hardware.camera2.CameraManager;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
+import android.util.Size;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.widget.Toast;
@@ -26,18 +26,22 @@ public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callbac
 
     private Camera2Util mCamera2Util;
     private Activity mActivity;
+    private Size mPreviewSize;
+    com.jme3.texture.Image mJmeImage;
 
-    public Camera2Preview(Context context) {
+    public Camera2Preview(Context context, com.jme3.texture.Image jmeImage) {
         super(context);
         // Install a SurfaceHolder.Callback so we get notified when the
         // underlying surface is created and destroyed.
         mHolder = getHolder();
         mHolder.addCallback(this);
+        mJmeImage = jmeImage;
+        mActivity = (Activity) context;
     }
 
     public void surfaceCreated(SurfaceHolder holder) {
         Log.i(TAG, " ***** surfaceCreated - mActivity:[" + mActivity + "] holder.getSurface():" + holder.getSurface() + "]");
-        mCamera2Util = new Camera2Util((CameraManager) mActivity.getSystemService(Context.CAMERA_SERVICE), mMessageHandler, mActivity.getWindowManager().getDefaultDisplay(), holder.getSurface());
+        mCamera2Util = new Camera2Util((CameraManager) mActivity.getSystemService(Context.CAMERA_SERVICE), mMessageHandler, mActivity.getWindowManager().getDefaultDisplay(), holder.getSurface(), mJmeImage);
     }
 
     public void surfaceDestroyed(SurfaceHolder holder) {
@@ -56,8 +60,12 @@ public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callbac
             // preview surface does not exist
             return;
         }
-        mCamera2Util.openCamera(w, h);
+        mPreviewSize = mCamera2Util.openCamera(w, h);
 
+    }
+
+    public Size getMPreviewSize() {
+        return mPreviewSize;
     }
 
     private Handler mMessageHandler = new Handler() {

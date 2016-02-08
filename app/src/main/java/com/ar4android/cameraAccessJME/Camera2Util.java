@@ -46,6 +46,8 @@ import android.view.Display;
 import android.view.Surface;
 import android.widget.Toast;
 
+import com.jme3.texture.image.ColorSpace;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -164,6 +166,7 @@ public class Camera2Util {
      * An {@link ImageReader} that handles still image capture.
      */
     private ImageReader mImageReader;
+    private ImageReader mJmeImageReader;
 
     /**
      * This is the output file for our picture.
@@ -180,6 +183,16 @@ public class Camera2Util {
         @Override
         public void onImageAvailable(ImageReader reader) {
             mBackgroundHandler.post(new ImageSaver(reader.acquireNextImage(), mFile));
+        }
+
+    };
+
+    private final ImageReader.OnImageAvailableListener mOnJmeImageAvailableListener
+            = new ImageReader.OnImageAvailableListener() {
+
+        @Override
+        public void onImageAvailable(ImageReader reader) {
+            mBackgroundHandler.post(new ImageJmeProcessing(reader.acquireNextImage(), mFile));
         }
 
     };
@@ -213,6 +226,11 @@ public class Camera2Util {
     private Display mDisplay;
 
     private Surface mSurface;
+
+    private byte[] mPreviewBufferRGB565 = null;
+    private java.nio.ByteBuffer mPreviewByteBufferRGB565;
+    private boolean pixelFormatConversionNeeded = true;
+    private com.jme3.texture.Image mCameraJMEImageRGB565;
 
     /**
      * A {@link CameraCaptureSession.CaptureCallback} that handles events related to JPEG capture.
@@ -325,11 +343,12 @@ public class Camera2Util {
         }
     }
 
-    public Camera2Util(CameraManager manager, Handler messageHandler, Display display, Surface surface) {
+    public Camera2Util(CameraManager manager, Handler messageHandler, Display display, Surface surface, com.jme3.texture.Image jmeImage) {
         mCameraManager = manager;
         mMessageHandler = messageHandler;
         mDisplay = display;
         mSurface = surface;
+        mCameraJMEImageRGB565 = jmeImage;
     }
 
     /**
@@ -339,6 +358,59 @@ public class Camera2Util {
      * @param height The height of available size for camera preview
      */
     private Size setUpCameraOutputs(int width, int height) {
+
+        Size previewSize = null;
+        try {
+            for (String cameraId : mCameraManager.getCameraIdList()) {
+                CameraCharacteristics characteristics
+                        = mCameraManager.getCameraCharacteristics(cameraId);
+
+                // We don't use a front facing camera in this sample.
+                if (characteristics.get(CameraCharacteristics.LENS_FACING)
+                        == CameraCharacteristics.LENS_FACING_FRONT) {
+                    continue;
+                }
+
+                StreamConfigurationMap map = characteristics.get(
+                        CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+
+                // For still image captures, we use the largest available size.
+                Size largest = Collections.max(
+                        Arrays.asList(map.getOutputSizes(ImageFormat.JPEG)),
+                        new CompareSizesByArea());
+                mImageReader = ImageReader.newInstance(largest.getWidth(), largest.getHeight(),
+                        ImageFormat.JPEG, /*maxImages*/2);
+                mImageReader.setOnImageAvailableListener(
+                        mOnImageAvailableListener, mBackgroundHandler);
+
+                mJmeImageReader = ImageReader.newInstance(largest.getWidth(), largest.getHeight(),
+                        ImageFormat.YUV_420_888, /*maxImages*/2);
+                mJmeImageReader.setOnImageAvailableListener(
+                        mOnJmeImageAvailableListener, mBackgroundHandler);
+
+                // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
+                // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
+                // garbage capture data.
+                previewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
+                        width, height, largest);
+
+                int bufferSizeRGB565 = previewSize.getWidth() * previewSize.getHeight() * 2 + 4096;
+                //Delete buffer before creating a new one.
+                mPreviewBufferRGB565 = null;
+                mPreviewBufferRGB565 = new byte[bufferSizeRGB565];
+                mPreviewByteBufferRGB565 = ByteBuffer.allocateDirect(mPreviewBufferRGB565.length);
+
+                mCameraId = cameraId;
+                break;
+            }
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+
+        return previewSize;
+    }
+
+    private Size setUpCameraBuffer(int width, int height) {
 
         Size previewSize = null;
         try {
@@ -658,6 +730,47 @@ public class Camera2Util {
 
     }
 
+    private class ImageJmeProcessing implements Runnable {
+
+        /**
+         * The JPEG image
+         */
+        private final Image mImage;
+        /**
+         * The file we save the image into.
+         */
+        private final File mFile;
+
+        public ImageJmeProcessing(Image image, File file) {
+            mImage = image;
+            mFile = file;
+        }
+
+        @Override
+        public void run() {
+
+            ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();
+            byte[] bytes = new byte[buffer.remaining()];
+            buffer.get(bytes);
+
+            if (mCameraJMEImageRGB565 != null) {
+                mPreviewByteBufferRGB565.clear();
+                // Perform processing on the camera preview data.
+                if(pixelFormatConversionNeeded) {
+                    yCbCrToRGB565(bytes, mPreviewSize.getWidth(), mPreviewSize.getHeight(),
+                            mPreviewBufferRGB565);
+                    mPreviewByteBufferRGB565.put(mPreviewBufferRGB565);
+                } else {
+                    mPreviewByteBufferRGB565.put(bytes);
+                }
+                mCameraJMEImageRGB565.setWidth(mPreviewSize.getWidth());
+                mCameraJMEImageRGB565.setHeight(mPreviewSize.getHeight());
+                mCameraJMEImageRGB565.setData(mPreviewByteBufferRGB565);
+            }
+        }
+
+    }
+
     /**
      * Compares two {@code Size}s based on their areas.
      */
@@ -689,5 +802,80 @@ public class Camera2Util {
         }
 
     }
+
+    private static void yCbCrToRGB565(byte[] YCBCRs, int width, int height,
+                                     byte[] rgbs) {
+        // the end of the luminance data
+        final int lumEnd = width * height;
+        // points to the next luminance value pair
+        int lumPtr = 0;
+        // points to the next chromiance value pair
+        int chrPtr = lumEnd;
+        // points to the next byte output pair of RGB565 value
+        int outPtr = 0;
+        // the end of the current luminance scanline
+        int lineEnd = width;
+
+        while (true) {
+
+            // skip back to the start of the chromiance values when necessary
+            if (lumPtr == lineEnd) {
+                if (lumPtr == lumEnd)
+                    break; // we've reached the end
+                // division here is a bit expensive, but's only done once per
+                // scanline
+                chrPtr = lumEnd + ((lumPtr >> 1) / width) * width;
+                lineEnd += width;
+            }
+
+            // read the luminance and chromiance values
+            final int Y1 = YCBCRs[lumPtr++] & 0xff;
+            final int Y2 = YCBCRs[lumPtr++] & 0xff;
+            final int Cr = (YCBCRs[chrPtr++] & 0xff) - 128;
+            final int Cb = (YCBCRs[chrPtr++] & 0xff) - 128;
+            int R, G, B;
+
+            // generate first RGB components
+            B = Y1 + ((454 * Cb) >> 8);
+            if (B < 0)
+                B = 0;
+            else if (B > 255)
+                B = 255;
+            G = Y1 - ((88 * Cb + 183 * Cr) >> 8);
+            if (G < 0)
+                G = 0;
+            else if (G > 255)
+                G = 255;
+            R = Y1 + ((359 * Cr) >> 8);
+            if (R < 0)
+                R = 0;
+            else if (R > 255)
+                R = 255;
+            // NOTE: this assume little-endian encoding
+            rgbs[outPtr++] = (byte) (((G & 0x3c) << 3) | (B >> 3));
+            rgbs[outPtr++] = (byte) ((R & 0xf8) | (G >> 5));
+
+            // generate second RGB components
+            B = Y2 + ((454 * Cb) >> 8);
+            if (B < 0)
+                B = 0;
+            else if (B > 255)
+                B = 255;
+            G = Y2 - ((88 * Cb + 183 * Cr) >> 8);
+            if (G < 0)
+                G = 0;
+            else if (G > 255)
+                G = 255;
+            R = Y2 + ((359 * Cr) >> 8);
+            if (R < 0)
+                R = 0;
+            else if (R > 255)
+                R = 255;
+            // NOTE: this assume little-endian encoding
+            rgbs[outPtr++] = (byte) (((G & 0x3c) << 3) | (B >> 3));
+            rgbs[outPtr++] = (byte) ((R & 0xf8) | (G >> 5));
+        }
+    }
+
 
 }
