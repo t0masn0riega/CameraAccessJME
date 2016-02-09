@@ -14,6 +14,7 @@ import android.graphics.ImageFormat;
 import android.graphics.PixelFormat;
 import android.hardware.Camera;
 import android.os.Bundle;
+import android.renderscript.RenderScript;
 import android.util.Log;
 import android.util.Size;
 import android.view.ViewGroup;
@@ -36,6 +37,7 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 	// If we have to convert the camera preview image into RGB565 or can use it
 	// directly
 	Image cameraJMEImageRGB565;
+	private RenderScript mRS;
 
 	public Camera2AccessJMEActivity() {
 		// Set the application class to run
@@ -63,6 +65,7 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 		cameraJMEImageRGB565 = new Image(Image.Format.RGB565, 0,
 				0, null, ColorSpace.Linear);
 		mPreview = new Camera2Preview(this, cameraJMEImageRGB565);
+		Log.i(TAG, " ***** onCreate");
 	}
 
 	@Override
@@ -82,5 +85,6 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 	@Override
 	protected void onPause() {
 		super.onPause();
+		Log.i(TAG, " ***** onPause");
 	}
 }

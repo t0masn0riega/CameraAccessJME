@@ -39,6 +39,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
+import android.renderscript.RenderScript;
 import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
@@ -232,6 +233,7 @@ public class Camera2Util {
     private boolean pixelFormatConversionNeeded = true;
     private com.jme3.texture.Image mCameraJMEImageRGB565;
 
+    private RenderScript mRS;
     /**
      * A {@link CameraCaptureSession.CaptureCallback} that handles events related to JPEG capture.
      */
@@ -383,64 +385,26 @@ public class Camera2Util {
                 mImageReader.setOnImageAvailableListener(
                         mOnImageAvailableListener, mBackgroundHandler);
 
-                mJmeImageReader = ImageReader.newInstance(largest.getWidth(), largest.getHeight(),
-                        ImageFormat.YUV_420_888, /*maxImages*/2);
-                mJmeImageReader.setOnImageAvailableListener(
-                        mOnJmeImageAvailableListener, mBackgroundHandler);
-
                 // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
                 // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
                 // garbage capture data.
                 previewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
                         width, height, largest);
+
+                previewSize = new Size(640, 480);
+
+                Log.i(TAG, "***** setUpCameraOutputs - largest.getWidth():[" + largest.getWidth() + "] largest.getHeight():[" + largest.getHeight() + "] previewSize.getWidth():[" + previewSize.getWidth() + "] previewSize.getHeight():[" + previewSize.getHeight() + "]");
+
+                mJmeImageReader = ImageReader.newInstance(previewSize.getWidth(), previewSize.getHeight(),
+                ImageFormat.YUV_420_888, /*maxImages*/1);
+                mJmeImageReader.setOnImageAvailableListener(
+                        mOnJmeImageAvailableListener, mBackgroundHandler);
 
                 int bufferSizeRGB565 = previewSize.getWidth() * previewSize.getHeight() * 2 + 4096;
                 //Delete buffer before creating a new one.
                 mPreviewBufferRGB565 = null;
                 mPreviewBufferRGB565 = new byte[bufferSizeRGB565];
                 mPreviewByteBufferRGB565 = ByteBuffer.allocateDirect(mPreviewBufferRGB565.length);
-
-                mCameraId = cameraId;
-                break;
-            }
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-
-        return previewSize;
-    }
-
-    private Size setUpCameraBuffer(int width, int height) {
-
-        Size previewSize = null;
-        try {
-            for (String cameraId : mCameraManager.getCameraIdList()) {
-                CameraCharacteristics characteristics
-                        = mCameraManager.getCameraCharacteristics(cameraId);
-
-                // We don't use a front facing camera in this sample.
-                if (characteristics.get(CameraCharacteristics.LENS_FACING)
-                        == CameraCharacteristics.LENS_FACING_FRONT) {
-                    continue;
-                }
-
-                StreamConfigurationMap map = characteristics.get(
-                        CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-
-                // For still image captures, we use the largest available size.
-                Size largest = Collections.max(
-                        Arrays.asList(map.getOutputSizes(ImageFormat.JPEG)),
-                        new CompareSizesByArea());
-                mImageReader = ImageReader.newInstance(largest.getWidth(), largest.getHeight(),
-                        ImageFormat.JPEG, /*maxImages*/2);
-                mImageReader.setOnImageAvailableListener(
-                        mOnImageAvailableListener, mBackgroundHandler);
-
-                // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
-                // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
-                // garbage capture data.
-                previewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
-                        width, height, largest);
 
                 mCameraId = cameraId;
                 break;
@@ -535,9 +499,10 @@ public class Camera2Util {
             mPreviewRequestBuilder
                     = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             mPreviewRequestBuilder.addTarget(mSurface);
+            mPreviewRequestBuilder.addTarget(mJmeImageReader.getSurface());
 
             // Here, we create a CameraCaptureSession for camera preview.
-            mCameraDevice.createCaptureSession(Arrays.asList(mSurface, mImageReader.getSurface()),
+            mCameraDevice.createCaptureSession(Arrays.asList(mSurface, mImageReader.getSurface(), mJmeImageReader.getSurface()),
                     new CameraCaptureSession.StateCallback() {
 
                         @Override
@@ -705,6 +670,8 @@ public class Camera2Util {
 
         @Override
         public void run() {
+            Log.i(TAG, "***** ImageSaver - run() - mImage:" + mImage + "] mFile:" + mFile + "]");
+
             ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();
             byte[] bytes = new byte[buffer.remaining()];
             buffer.get(bytes);
@@ -748,24 +715,33 @@ public class Camera2Util {
 
         @Override
         public void run() {
+            Log.i(TAG, "***** ImageJmeProcessing - run() - mCameraJMEImageRGB565:" + mCameraJMEImageRGB565 + "]");
 
-            ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();
-            byte[] bytes = new byte[buffer.remaining()];
-            buffer.get(bytes);
+            try {
+                ByteBuffer yBuf = mImage.getPlanes()[0].getBuffer();
+                ByteBuffer uBuf = mImage.getPlanes()[1].getBuffer();
+                ByteBuffer vBuf = mImage.getPlanes()[2].getBuffer();
+                byte[] yBytes = new byte[yBuf.remaining()];
+                yBuf.rewind();
+                yBuf.get(yBytes);
+                byte[] uBytes = new byte[uBuf.remaining()];
+                uBuf.rewind();
+                uBuf.get(uBytes);
+                byte[] vBytes = new byte[vBuf.remaining()];
+                vBuf.rewind();
+                vBuf.get(vBytes);
+                byte[] rgbs = convertYUV_420_888ToRGB(yBytes, uBytes, vBytes, mImage.getPlanes()[1].getRowStride(), mImage.getPlanes()[2].getRowStride(), mImage.getWidth(), mImage.getHeight());
+                Arrays.fill(mPreviewBufferRGB565, (byte) 0);
+                System.arraycopy(rgbs, 0, mPreviewBufferRGB565, 0, rgbs.length);
+                mImage.close();
+                Log.i(TAG, "***** ImageJmeProcessing - mPreviewBufferRGB565.length:" + mPreviewBufferRGB565.length + "]: rgbs.length:[" + rgbs.length + "] are equal:[" + Arrays.equals(rgbs, mPreviewBufferRGB565) + "]");
+//                Log.i(TAG, "***** ImageJmeProcessing - new String(mPreviewBufferRGB565):" + new String(mPreviewBufferRGB565) + "]");
+//                Log.i(TAG, "***** ImageJmeProcessing - new String(rgbs):" + new String(rgbs) + "]");
 
-            if (mCameraJMEImageRGB565 != null) {
-                mPreviewByteBufferRGB565.clear();
-                // Perform processing on the camera preview data.
-                if(pixelFormatConversionNeeded) {
-                    yCbCrToRGB565(bytes, mPreviewSize.getWidth(), mPreviewSize.getHeight(),
-                            mPreviewBufferRGB565);
-                    mPreviewByteBufferRGB565.put(mPreviewBufferRGB565);
-                } else {
-                    mPreviewByteBufferRGB565.put(bytes);
+            } finally {
+                if (mImage != null) {
+                    mImage.close();
                 }
-                mCameraJMEImageRGB565.setWidth(mPreviewSize.getWidth());
-                mCameraJMEImageRGB565.setHeight(mPreviewSize.getHeight());
-                mCameraJMEImageRGB565.setData(mPreviewByteBufferRGB565);
             }
         }
 
@@ -805,6 +781,8 @@ public class Camera2Util {
 
     private static void yCbCrToRGB565(byte[] YCBCRs, int width, int height,
                                      byte[] rgbs) {
+
+        Log.i(TAG, "***** yCbCrToRGB565 - YCBCRs.length:[" + YCBCRs.length + "] rgbs.length:[" + rgbs.length + "] width:[" + width + "] height:[" + height + "]");
         // the end of the luminance data
         final int lumEnd = width * height;
         // points to the next luminance value pair
@@ -815,6 +793,8 @@ public class Camera2Util {
         int outPtr = 0;
         // the end of the current luminance scanline
         int lineEnd = width;
+
+        Log.i(TAG, "***** yCbCrToRGB565 - lumEnd:[" + lumEnd + "] lineEnd:[" + lineEnd + "]");
 
         while (true) {
 
@@ -877,5 +857,64 @@ public class Camera2Util {
         }
     }
 
+    private byte[] convertYUV_420_888ToRGB(byte[] yBytes, byte[] uBytes, byte[] vBytes, int uRowStride, int vRowStride, int width, int height)
+    {
+        final int BYTES_PER_RGB_PIX = 3;
+        int yp, up, vp; // YUV positions.
+        byte[] yuvPixel = { 0, 0, 0 };
+        byte[] rowBytesRGB = new byte[width * BYTES_PER_RGB_PIX];
+        int lSumR = 0, lSumG = 0, lSumB = 0;
 
+        // For Android 5.0.1(API 21) has an issue which is blank(zero) U, V arrays except the first some bytes(eg. 656 bytes for 176x144).
+        // This issue caused the converted image turned to Green scaled overall of the image.
+        // This issue is fixed in Android 5.1.1(API 22).
+
+        yp = 0;
+        for (int i = 0; i < height; i++)
+        {
+            up = (i >> 1) * uRowStride;
+            vp = (i >> 1) * vRowStride;
+            for (int j = 0; j < width; j++)
+            {
+                yuvPixel[0] = yBytes[yp++];
+                if ((j & 1) == 0)
+                {
+                    yuvPixel[1] = uBytes[up++];
+                    yuvPixel[2] = vBytes[vp++];
+                }
+
+                // For the test to get 3 RGB colors average.
+                yuvToRgb_Test(yuvPixel, j * BYTES_PER_RGB_PIX, rowBytesRGB);
+                lSumR += (rowBytesRGB[j * BYTES_PER_RGB_PIX] & 0xff);
+                lSumG += (rowBytesRGB[j * BYTES_PER_RGB_PIX + 1] & 0xff);
+                lSumB += (rowBytesRGB[j * BYTES_PER_RGB_PIX + 2] & 0xff);
+            }
+        }
+
+        return rowBytesRGB;
+    }
+
+    private void yuvToRgb_Test(byte[] yuvData, int rgbOffset, byte[] rgbOut)
+    {
+        final int COLOR_MAX = 255;
+
+        float y = yuvData[0] & 0xff; // Y channel
+        float cb = yuvData[1] & 0xff; // U channel
+        float cr = yuvData[2] & 0xff; // V channel
+
+        // Convert YUV fixed pixel to RGB (from JFIF's "Conversion to and from RGB" section).
+        float r = y + 1.402f * (cr - 128);
+        float g = y - 0.34414f * (cb - 128) - 0.71414f * (cr - 128);
+        float b = y + 1.772f * (cb - 128);
+
+        // Clamp to [0, 255].
+        r = Math.max(0, Math.min(COLOR_MAX, r));
+        g = Math.max(0, Math.min(COLOR_MAX, g));
+        b = Math.max(0, Math.min(COLOR_MAX, b));
+
+        // 'byte' is signed, it takes the last 8bits of the integer.
+        rgbOut[rgbOffset] = (byte) ((int) r);
+        rgbOut[rgbOffset + 1] = (byte) ((int) g);
+        rgbOut[rgbOffset + 2] = (byte) ((int) b);
+    }
 }

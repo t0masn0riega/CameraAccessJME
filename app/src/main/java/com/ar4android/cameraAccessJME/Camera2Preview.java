@@ -37,6 +37,7 @@ public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callbac
         mHolder.addCallback(this);
         mJmeImage = jmeImage;
         mActivity = (Activity) context;
+        Log.i(TAG, " ***** instantiated.");
     }
 
     public void surfaceCreated(SurfaceHolder holder) {
@@ -45,7 +46,7 @@ public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callbac
     }
 
     public void surfaceDestroyed(SurfaceHolder holder) {
-        Log.i(TAG, " ***** surfaceCreated - surfaceDestroyed");
+        Log.i(TAG, " ***** surfaceDestroyed");
         mCamera2Util.closeCamera();
     }
 
@@ -53,7 +54,7 @@ public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callbac
         // If your preview can change or rotate, take care of those events here.
         // Make sure to stop the preview before resizing or reformatting it.
 
-        Log.i(TAG, " ***** surfaceChanged - surfaceChanged");
+        Log.i(TAG, " ***** surfaceChanged");
         // If your preview can change or rotate, take care of those events here.
         // Make sure to stop the preview before resizing or reformatting it.
         if (mHolder.getSurface() == null){
