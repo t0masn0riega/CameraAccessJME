@@ -9,22 +9,14 @@
  */
 package com.ar4android.cameraAccessJME;
 
-import android.content.pm.ActivityInfo;
-import android.graphics.ImageFormat;
-import android.graphics.PixelFormat;
-import android.hardware.Camera;
 import android.os.Bundle;
 import android.renderscript.RenderScript;
 import android.util.Log;
-import android.util.Size;
 import android.view.ViewGroup;
 
 import com.jme3.app.AndroidHarness;
 import com.jme3.texture.Image;
 import com.jme3.texture.image.ColorSpace;
-
-import java.nio.ByteBuffer;
-import java.util.List;
 
 //import com.jme3.system.android.AndroidConfigChooser.ConfigType;
 
@@ -64,7 +56,7 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 		super.onCreate(savedInstanceState);
 		cameraJMEImageRGB565 = new Image(Image.Format.RGB565, 0,
 				0, null, ColorSpace.Linear);
-		mPreview = new Camera2Preview(this, cameraJMEImageRGB565);
+		mPreview = new Camera2Preview(this, cameraJMEImageRGB565, app);
 		Log.i(TAG, " ***** onCreate");
 	}
 
@@ -72,12 +64,15 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
     public void onResume() {
     	super.onResume();
 
-		setContentView(mPreview);
+		ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(1, 1);
+		addContentView(mPreview, lp);
+//		setContentView(mPreview);
 
-		if ((CameraAccessJME) app != null) {
-			((CameraAccessJME) app)
-					.setTexture(cameraJMEImageRGB565);
-		}
+//		if ((com.ar4android.cameraAccessJME.CameraAccessJME) app != null) {
+//			Log.i(TAG, " ***** onResume - (com.ar4android.cameraAccessJME.CameraAccessJME) app != null");
+//			((com.ar4android.cameraAccessJME.CameraAccessJME) app)
+//					.setTexture(cameraJMEImageRGB565);
+//		}
 
 		Log.i(TAG, " ***** onResume");
 	}

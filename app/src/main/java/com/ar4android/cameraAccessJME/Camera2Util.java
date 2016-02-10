@@ -22,6 +22,7 @@ import android.app.Dialog;
 import android.app.DialogFragment;
 import android.content.DialogInterface;
 import android.graphics.ImageFormat;
+import android.graphics.PixelFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -47,6 +48,7 @@ import android.view.Display;
 import android.view.Surface;
 import android.widget.Toast;
 
+import com.jme3.app.Application;
 import com.jme3.texture.image.ColorSpace;
 
 import java.io.File;
@@ -193,7 +195,7 @@ public class Camera2Util {
 
         @Override
         public void onImageAvailable(ImageReader reader) {
-            mBackgroundHandler.post(new ImageJmeProcessing(reader.acquireNextImage(), mFile));
+            mBackgroundHandler.post(new ImageJmeProcessing(reader,mPreviewBufferRGB565));
         }
 
     };
@@ -232,6 +234,7 @@ public class Camera2Util {
     private java.nio.ByteBuffer mPreviewByteBufferRGB565;
     private boolean pixelFormatConversionNeeded = true;
     private com.jme3.texture.Image mCameraJMEImageRGB565;
+    private com.jme3.app.Application mJMEapp;
 
     private RenderScript mRS;
     /**
@@ -345,12 +348,13 @@ public class Camera2Util {
         }
     }
 
-    public Camera2Util(CameraManager manager, Handler messageHandler, Display display, Surface surface, com.jme3.texture.Image jmeImage) {
+    public Camera2Util(CameraManager manager, Handler messageHandler, Display display, Surface surface, com.jme3.texture.Image jmeImage, Application jmeApp) {
         mCameraManager = manager;
         mMessageHandler = messageHandler;
         mDisplay = display;
         mSurface = surface;
-        mCameraJMEImageRGB565 = jmeImage;
+//        mCameraJMEImageRGB565 = jmeImage;
+        mJMEapp = jmeApp;
     }
 
     /**
@@ -400,11 +404,7 @@ public class Camera2Util {
                 mJmeImageReader.setOnImageAvailableListener(
                         mOnJmeImageAvailableListener, mBackgroundHandler);
 
-                int bufferSizeRGB565 = previewSize.getWidth() * previewSize.getHeight() * 2 + 4096;
-                //Delete buffer before creating a new one.
-                mPreviewBufferRGB565 = null;
-                mPreviewBufferRGB565 = new byte[bufferSizeRGB565];
-                mPreviewByteBufferRGB565 = ByteBuffer.allocateDirect(mPreviewBufferRGB565.length);
+                preparePreviewCallbackBuffer(previewSize);
 
                 mCameraId = cameraId;
                 break;
@@ -702,22 +702,25 @@ public class Camera2Util {
         /**
          * The JPEG image
          */
-        private final Image mImage;
+        Image mImage;
         /**
          * The file we save the image into.
          */
-        private final File mFile;
+        byte[] mPreviewBufferRGB565;
 
-        public ImageJmeProcessing(Image image, File file) {
-            mImage = image;
-            mFile = file;
+        ImageReader mReader;
+
+        public ImageJmeProcessing(ImageReader reader, byte[] previewBufferRGB565) {
+            mPreviewBufferRGB565 = previewBufferRGB565;
+            mReader = reader;
         }
 
         @Override
         public void run() {
-            Log.i(TAG, "***** ImageJmeProcessing - run() - mCameraJMEImageRGB565:" + mCameraJMEImageRGB565 + "]");
+            Log.i(TAG, "***** ImageJmeProcessing - run() - mPreviewBufferRGB565:" + mPreviewBufferRGB565 + "]");
 
             try {
+                mImage = mReader.acquireNextImage();
                 ByteBuffer yBuf = mImage.getPlanes()[0].getBuffer();
                 ByteBuffer uBuf = mImage.getPlanes()[1].getBuffer();
                 ByteBuffer vBuf = mImage.getPlanes()[2].getBuffer();
@@ -731,12 +734,23 @@ public class Camera2Util {
                 vBuf.rewind();
                 vBuf.get(vBytes);
                 byte[] rgbs = convertYUV_420_888ToRGB(yBytes, uBytes, vBytes, mImage.getPlanes()[1].getRowStride(), mImage.getPlanes()[2].getRowStride(), mImage.getWidth(), mImage.getHeight());
+
                 Arrays.fill(mPreviewBufferRGB565, (byte) 0);
                 System.arraycopy(rgbs, 0, mPreviewBufferRGB565, 0, rgbs.length);
                 mImage.close();
-                Log.i(TAG, "***** ImageJmeProcessing - mPreviewBufferRGB565.length:" + mPreviewBufferRGB565.length + "]: rgbs.length:[" + rgbs.length + "] are equal:[" + Arrays.equals(rgbs, mPreviewBufferRGB565) + "]");
+
+//                Log.i(TAG, "***** ImageJmeProcessing - mPreviewBufferRGB565.length:" + mPreviewBufferRGB565.length + "]: rgbs.length:[" + rgbs.length + "] are equal:[" + Arrays.equals(rgbs, mPreviewBufferRGB565) + "]");
 //                Log.i(TAG, "***** ImageJmeProcessing - new String(mPreviewBufferRGB565):" + new String(mPreviewBufferRGB565) + "]");
 //                Log.i(TAG, "***** ImageJmeProcessing - new String(rgbs):" + new String(rgbs) + "]");
+                mPreviewByteBufferRGB565.clear();
+                mPreviewByteBufferRGB565.put(mPreviewBufferRGB565);
+
+                mCameraJMEImageRGB565.setData(mPreviewByteBufferRGB565);
+                if ((com.ar4android.cameraAccessJME.CameraAccessJME) mJMEapp != null) {
+                    Log.i(TAG, "***** ImageJmeProcessing -  mJMEapp != null");
+                    ((com.ar4android.cameraAccessJME.CameraAccessJME) mJMEapp)
+                            .setTexture(mCameraJMEImageRGB565);
+                }
 
             } finally {
                 if (mImage != null) {
@@ -857,7 +871,7 @@ public class Camera2Util {
         }
     }
 
-    private byte[] convertYUV_420_888ToRGB(byte[] yBytes, byte[] uBytes, byte[] vBytes, int uRowStride, int vRowStride, int width, int height)
+    private static byte[] convertYUV_420_888ToRGB(byte[] yBytes, byte[] uBytes, byte[] vBytes, int uRowStride, int vRowStride, int width, int height)
     {
         final int BYTES_PER_RGB_PIX = 3;
         int yp, up, vp; // YUV positions.
@@ -894,7 +908,7 @@ public class Camera2Util {
         return rowBytesRGB;
     }
 
-    private void yuvToRgb_Test(byte[] yuvData, int rgbOffset, byte[] rgbOut)
+    private static void yuvToRgb_Test(byte[] yuvData, int rgbOffset, byte[] rgbOut)
     {
         final int COLOR_MAX = 255;
 
@@ -917,4 +931,19 @@ public class Camera2Util {
         rgbOut[rgbOffset + 1] = (byte) ((int) g);
         rgbOut[rgbOffset + 2] = (byte) ((int) b);
     }
+
+    private void preparePreviewCallbackBuffer(Size mPreviewSize) {
+        // The actual preview width and height.
+        // They can differ from the requested width mDesiredCameraPreviewWidth
+        int mPreviewWidth = mPreviewSize.getWidth();
+        int mPreviewHeight = mPreviewSize.getHeight();
+        int bufferSizeRGB565 = mPreviewWidth * mPreviewHeight * 2 + 4096;
+        //Delete buffer before creating a new one.
+        mPreviewBufferRGB565 = null;
+        mPreviewBufferRGB565 = new byte[bufferSizeRGB565];
+        mPreviewByteBufferRGB565 = ByteBuffer.allocateDirect(mPreviewBufferRGB565.length);
+        mCameraJMEImageRGB565 = new com.jme3.texture.Image(com.jme3.texture.Image.Format.RGB565, mPreviewWidth,
+                mPreviewHeight, mPreviewByteBufferRGB565, ColorSpace.Linear);
+    }
+
 }

@@ -20,6 +20,9 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.widget.Toast;
 
+import com.jme3.app.Application;
+import com.jme3.texture.Image;
+
 public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callback {
     private static final String TAG = "CameraPreview";
 	private SurfaceHolder mHolder;
@@ -28,8 +31,9 @@ public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callbac
     private Activity mActivity;
     private Size mPreviewSize;
     com.jme3.texture.Image mJmeImage;
+    com.jme3.app.Application mJMEapp;
 
-    public Camera2Preview(Context context, com.jme3.texture.Image jmeImage) {
+    public Camera2Preview(Context context, Image jmeImage, com.jme3.app.Application jmeApp) {
         super(context);
         // Install a SurfaceHolder.Callback so we get notified when the
         // underlying surface is created and destroyed.
@@ -37,12 +41,13 @@ public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callbac
         mHolder.addCallback(this);
         mJmeImage = jmeImage;
         mActivity = (Activity) context;
+        mJMEapp = jmeApp;
         Log.i(TAG, " ***** instantiated.");
     }
 
     public void surfaceCreated(SurfaceHolder holder) {
         Log.i(TAG, " ***** surfaceCreated - mActivity:[" + mActivity + "] holder.getSurface():" + holder.getSurface() + "]");
-        mCamera2Util = new Camera2Util((CameraManager) mActivity.getSystemService(Context.CAMERA_SERVICE), mMessageHandler, mActivity.getWindowManager().getDefaultDisplay(), holder.getSurface(), mJmeImage);
+        mCamera2Util = new Camera2Util((CameraManager) mActivity.getSystemService(Context.CAMERA_SERVICE), mMessageHandler, mActivity.getWindowManager().getDefaultDisplay(), holder.getSurface(), mJmeImage, mJMEapp);
     }
 
     public void surfaceDestroyed(SurfaceHolder holder) {
