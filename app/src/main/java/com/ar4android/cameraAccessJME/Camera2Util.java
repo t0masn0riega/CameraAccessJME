@@ -51,6 +51,7 @@ import android.widget.Toast;
 import com.jme3.app.Application;
 import com.jme3.texture.image.ColorSpace;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -395,8 +396,6 @@ public class Camera2Util {
                 previewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
                         width, height, largest);
 
-                previewSize = new Size(640, 480);
-
                 Log.i(TAG, "***** setUpCameraOutputs - largest.getWidth():[" + largest.getWidth() + "] largest.getHeight():[" + largest.getHeight() + "] previewSize.getWidth():[" + previewSize.getWidth() + "] previewSize.getHeight():[" + previewSize.getHeight() + "]");
 
                 mJmeImageReader = ImageReader.newInstance(previewSize.getWidth(), previewSize.getHeight(),
@@ -721,27 +720,55 @@ public class Camera2Util {
 
             try {
                 mImage = mReader.acquireNextImage();
+                Log.i(TAG, "***** ImageJmeProcessing - run() - mImage.getWidth():" + mImage.getWidth() + "]  mImage.getHeight():" + mImage.getHeight() + "] mImage.getPlanes().length:[" + mImage.getPlanes().length + "] mImage.getFormat():[" + mImage.getFormat() + "]");
                 ByteBuffer yBuf = mImage.getPlanes()[0].getBuffer();
-                ByteBuffer uBuf = mImage.getPlanes()[1].getBuffer();
-                ByteBuffer vBuf = mImage.getPlanes()[2].getBuffer();
+                Log.i(TAG, "***** ImageJmeProcessing - run() - mImage.getPlanes()[0].getRowStride():" + mImage.getPlanes()[0].getRowStride() + "]  mImage.getPlanes()[0].getPixelStride():" + mImage.getPlanes()[0].getPixelStride() + "]");
+                Log.i(TAG, "***** ImageJmeProcessing - run() - vBuf.remaining() -1:" + yBuf.remaining() + "]");
                 byte[] yBytes = new byte[yBuf.remaining()];
                 yBuf.rewind();
                 yBuf.get(yBytes);
+                Log.i(TAG, "***** ImageJmeProcessing - run() -  yBuf.remaining() -2:" + yBuf.remaining() + "] yBytes.length -2:" + yBytes.length + "]");
+
+                ByteBuffer uBuf = mImage.getPlanes()[1].getBuffer();
+                Log.i(TAG, "***** ImageJmeProcessing - run() - mImage.getPlanes()[1].getRowStride():" + mImage.getPlanes()[1].getRowStride() + "]  mImage.getPlanes()[1].getPixelStride():" + mImage.getPlanes()[1].getPixelStride() + "]");
                 byte[] uBytes = new byte[uBuf.remaining()];
+                Log.i(TAG, "***** ImageJmeProcessing - run() - uBuf.remaining() -1:" + uBuf.remaining() + "]");
                 uBuf.rewind();
                 uBuf.get(uBytes);
+                Log.i(TAG, "***** ImageJmeProcessing - run() -  uBuf.remaining() -2:" + uBuf.remaining() + "] uBytes.length -2:" + uBytes.length + "]");
+
+                ByteBuffer vBuf = mImage.getPlanes()[2].getBuffer();
+                Log.i(TAG, "***** ImageJmeProcessing - run() - mImage.getPlanes()[2].getRowStride():" + mImage.getPlanes()[2].getRowStride() + "]  mImage.getPlanes()[2].getPixelStride():" + mImage.getPlanes()[2].getPixelStride() + "]");
                 byte[] vBytes = new byte[vBuf.remaining()];
+                Log.i(TAG, "***** ImageJmeProcessing - run() - vBuf.remaining() -1:" + vBuf.remaining() + "]");
                 vBuf.rewind();
                 vBuf.get(vBytes);
-                byte[] rgbs = convertYUV_420_888ToRGB(yBytes, uBytes, vBytes, mImage.getPlanes()[1].getRowStride(), mImage.getPlanes()[2].getRowStride(), mImage.getWidth(), mImage.getHeight());
+                Log.i(TAG, "***** ImageJmeProcessing - run() -  vBuf.remaining() -2:" + vBuf.remaining() + "] vBytes.length -2:" + vBytes.length + "]");
 
-                Arrays.fill(mPreviewBufferRGB565, (byte) 0);
-                System.arraycopy(rgbs, 0, mPreviewBufferRGB565, 0, rgbs.length);
+                /**
+                 * Convert YUV_420_888 image from  planar
+                 * to semi-planar
+                 */
+                ByteArrayOutputStream yuv420semiPlanar = new ByteArrayOutputStream();
+                try {
+                    yuv420semiPlanar.write(yBytes);
+                    Log.i(TAG, "***** ImageJmeProcessing - run() - vBytes.length:" + vBytes.length + "]");
+                    for (int i=0;i<vBytes.length;i++) {
+                        yuv420semiPlanar.write(uBytes[i]);
+                        yuv420semiPlanar.write(vBytes[i]);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                /**
+                 * Convert YUV_420_888 semi-planar into RGB.
+                 */
+                yCbCrToRGB565(yuv420semiPlanar.toByteArray(), mImage.getWidth(), mImage.getHeight(),
+                        mPreviewBufferRGB565);
+
                 mImage.close();
 
-//                Log.i(TAG, "***** ImageJmeProcessing - mPreviewBufferRGB565.length:" + mPreviewBufferRGB565.length + "]: rgbs.length:[" + rgbs.length + "] are equal:[" + Arrays.equals(rgbs, mPreviewBufferRGB565) + "]");
-//                Log.i(TAG, "***** ImageJmeProcessing - new String(mPreviewBufferRGB565):" + new String(mPreviewBufferRGB565) + "]");
-//                Log.i(TAG, "***** ImageJmeProcessing - new String(rgbs):" + new String(rgbs) + "]");
                 mPreviewByteBufferRGB565.clear();
                 mPreviewByteBufferRGB565.put(mPreviewBufferRGB565);
 
@@ -869,67 +896,6 @@ public class Camera2Util {
             rgbs[outPtr++] = (byte) (((G & 0x3c) << 3) | (B >> 3));
             rgbs[outPtr++] = (byte) ((R & 0xf8) | (G >> 5));
         }
-    }
-
-    private static byte[] convertYUV_420_888ToRGB(byte[] yBytes, byte[] uBytes, byte[] vBytes, int uRowStride, int vRowStride, int width, int height)
-    {
-        final int BYTES_PER_RGB_PIX = 3;
-        int yp, up, vp; // YUV positions.
-        byte[] yuvPixel = { 0, 0, 0 };
-        byte[] rowBytesRGB = new byte[width * BYTES_PER_RGB_PIX];
-        int lSumR = 0, lSumG = 0, lSumB = 0;
-
-        // For Android 5.0.1(API 21) has an issue which is blank(zero) U, V arrays except the first some bytes(eg. 656 bytes for 176x144).
-        // This issue caused the converted image turned to Green scaled overall of the image.
-        // This issue is fixed in Android 5.1.1(API 22).
-
-        yp = 0;
-        for (int i = 0; i < height; i++)
-        {
-            up = (i >> 1) * uRowStride;
-            vp = (i >> 1) * vRowStride;
-            for (int j = 0; j < width; j++)
-            {
-                yuvPixel[0] = yBytes[yp++];
-                if ((j & 1) == 0)
-                {
-                    yuvPixel[1] = uBytes[up++];
-                    yuvPixel[2] = vBytes[vp++];
-                }
-
-                // For the test to get 3 RGB colors average.
-                yuvToRgb_Test(yuvPixel, j * BYTES_PER_RGB_PIX, rowBytesRGB);
-                lSumR += (rowBytesRGB[j * BYTES_PER_RGB_PIX] & 0xff);
-                lSumG += (rowBytesRGB[j * BYTES_PER_RGB_PIX + 1] & 0xff);
-                lSumB += (rowBytesRGB[j * BYTES_PER_RGB_PIX + 2] & 0xff);
-            }
-        }
-
-        return rowBytesRGB;
-    }
-
-    private static void yuvToRgb_Test(byte[] yuvData, int rgbOffset, byte[] rgbOut)
-    {
-        final int COLOR_MAX = 255;
-
-        float y = yuvData[0] & 0xff; // Y channel
-        float cb = yuvData[1] & 0xff; // U channel
-        float cr = yuvData[2] & 0xff; // V channel
-
-        // Convert YUV fixed pixel to RGB (from JFIF's "Conversion to and from RGB" section).
-        float r = y + 1.402f * (cr - 128);
-        float g = y - 0.34414f * (cb - 128) - 0.71414f * (cr - 128);
-        float b = y + 1.772f * (cb - 128);
-
-        // Clamp to [0, 255].
-        r = Math.max(0, Math.min(COLOR_MAX, r));
-        g = Math.max(0, Math.min(COLOR_MAX, g));
-        b = Math.max(0, Math.min(COLOR_MAX, b));
-
-        // 'byte' is signed, it takes the last 8bits of the integer.
-        rgbOut[rgbOffset] = (byte) ((int) r);
-        rgbOut[rgbOffset + 1] = (byte) ((int) g);
-        rgbOut[rgbOffset + 2] = (byte) ((int) b);
     }
 
     private void preparePreviewCallbackBuffer(Size mPreviewSize) {
