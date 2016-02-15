@@ -77,6 +77,10 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 	@Override
 	protected void onPause() {
 		super.onPause();
+		// remove the SurfaceView
+		ViewGroup parent = (ViewGroup) mPreview.getParent();
+		parent.removeView(mPreview);
+
 		Log.i(TAG, " ***** onPause");
 	}
 }

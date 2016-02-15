@@ -444,6 +444,8 @@ public class Camera2Util {
         try {
             mCameraOpenCloseLock.acquire();
             if (null != mCaptureSession) {
+                mCaptureSession.stopRepeating();
+
                 mCaptureSession.close();
                 mCaptureSession = null;
             }
@@ -455,8 +457,14 @@ public class Camera2Util {
                 mImageReader.close();
                 mImageReader = null;
             }
+            if (null != mJmeImageReader) {
+                mJmeImageReader.close();
+                mJmeImageReader = null;
+            }
         } catch (InterruptedException e) {
             throw new RuntimeException("Interrupted while trying to lock camera closing.", e);
+        } catch (CameraAccessException e) {
+            throw new RuntimeException("Interrupted while trying to stopRepeating.", e);
         } finally {
             mCameraOpenCloseLock.release();
         }
