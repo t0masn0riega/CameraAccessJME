@@ -9,6 +9,7 @@
  */
 package com.ar4android.cameraAccessJME;
 
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.renderscript.RenderScript;
 import android.util.Log;
@@ -64,15 +65,11 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
     public void onResume() {
     	super.onResume();
 
+		// Choose screen orientation
+		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+
 		ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(1, 1);
 		addContentView(mPreview, lp);
-//		setContentView(mPreview);
-
-//		if ((com.ar4android.cameraAccessJME.CameraAccessJME) app != null) {
-//			Log.i(TAG, " ***** onResume - (com.ar4android.cameraAccessJME.CameraAccessJME) app != null");
-//			((com.ar4android.cameraAccessJME.CameraAccessJME) app)
-//					.setTexture(cameraJMEImageRGB565);
-//		}
 
 		Log.i(TAG, " ***** onResume");
 	}
