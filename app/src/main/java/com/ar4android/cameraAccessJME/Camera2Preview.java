@@ -20,34 +20,33 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.widget.Toast;
 
-import com.jme3.app.Application;
-import com.jme3.texture.Image;
-
 public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callback {
     private static final String TAG = "CameraPreview";
 	private SurfaceHolder mHolder;
 
-    private Camera2Util mCamera2Util;
+    private CameraWrapper mCamera2Util;
     private Activity mActivity;
     private Size mPreviewSize;
-    com.jme3.texture.Image mJmeImage;
-    com.jme3.app.Application mJMEapp;
+    CameraWrapper.PreviewCallback mCameraCallback;
+    CameraWrapper.PreviewSizeCallback mPreviewSizeCallback;
 
-    public Camera2Preview(Context context, Image jmeImage, com.jme3.app.Application jmeApp) {
+    public Camera2Preview(Context context, CameraWrapper.PreviewCallback cameraCallback, CameraWrapper.PreviewSizeCallback previewSizeCallback) {
         super(context);
         // Install a SurfaceHolder.Callback so we get notified when the
         // underlying surface is created and destroyed.
         mHolder = getHolder();
         mHolder.addCallback(this);
-        mJmeImage = jmeImage;
         mActivity = (Activity) context;
-        mJMEapp = jmeApp;
+        mCameraCallback = cameraCallback;
+        mPreviewSizeCallback = previewSizeCallback;
         Log.i(TAG, " ***** instantiated.");
     }
 
     public void surfaceCreated(SurfaceHolder holder) {
         Log.i(TAG, " ***** surfaceCreated - mActivity:[" + mActivity + "] holder.getSurface():" + holder.getSurface() + "]");
-        mCamera2Util = new Camera2Util((CameraManager) mActivity.getSystemService(Context.CAMERA_SERVICE), mMessageHandler, mActivity.getWindowManager().getDefaultDisplay(), holder.getSurface(), mJmeImage, mJMEapp);
+        mCamera2Util = new Camera2WrapperImpl((CameraManager) mActivity.getSystemService(Context.CAMERA_SERVICE), mMessageHandler, mActivity.getWindowManager().getDefaultDisplay(), holder.getSurface());
+        mCamera2Util.setPreviewCallback(mCameraCallback);
+        mCamera2Util.setPreviewSizeCallback(mPreviewSizeCallback);
     }
 
     public void surfaceDestroyed(SurfaceHolder holder) {
@@ -68,10 +67,6 @@ public class Camera2Preview extends SurfaceView implements SurfaceHolder.Callbac
         }
         mPreviewSize = mCamera2Util.openCamera(w, h);
 
-    }
-
-    public Size getMPreviewSize() {
-        return mPreviewSize;
     }
 
     private Handler mMessageHandler = new Handler() {
