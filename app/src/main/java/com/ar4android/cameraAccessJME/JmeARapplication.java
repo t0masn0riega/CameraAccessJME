@@ -10,7 +10,6 @@ import com.jme3.texture.Image;
  */
 public abstract class JmeARapplication extends SimpleApplication {
     abstract void setTexture(final Image image);
-    void setUserLocation(Location location) {
-
-    };
+    void setUserLocation(Location location) {};
+    public void setRotation(float pitch, float roll, float heading){};
 }

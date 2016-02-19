@@ -12,6 +12,10 @@ package com.ar4android.cameraAccessJME;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.pm.ActivityInfo;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.Size;
@@ -23,6 +27,7 @@ import com.jme3.texture.Image;
 import com.jme3.texture.image.ColorSpace;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 //include packages for Android Location API
 import android.location.Location;
@@ -52,6 +57,13 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 
 	private LocationManager locationManager;
 	private Location mLocation;
+
+	private SensorManager sensorManager;
+	Sensor rotationVectorSensor;
+	Sensor gyroscopeSensor;
+	Sensor magneticFieldSensor;
+	Sensor accelSensor;
+	Sensor linearAccelSensor;
 
 	private final CameraWrapper.PreviewCallback mCameraCallback = new CameraWrapper.PreviewCallback() {
 		public void onPreviewFrame(byte[] data) {
@@ -100,6 +112,48 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 
 	};
 
+	private SensorEventListener sensorListener = new SensorEventListener() {
+
+		final double NS2S = 1.0f / 1000000000.0f;
+
+		@Override
+		public void onAccuracyChanged(Sensor sensor, int accuracy) {
+			Log.d(TAG, "onAccuracyChanged: " + accuracy);
+
+		}
+
+		@Override
+		public void onSensorChanged(SensorEvent event) {
+
+			switch(event.sensor.getType()) {
+				case Sensor.TYPE_ACCELEROMETER:
+//do something
+					break;
+				case Sensor.TYPE_LINEAR_ACCELERATION:
+//do something
+					break;
+				case Sensor.TYPE_MAGNETIC_FIELD:
+//do something
+					break;
+				case Sensor.TYPE_GYROSCOPE:
+//do something
+					break;
+				case Sensor.TYPE_ROTATION_VECTOR:
+					float[] rotationVector= {event.values[0],event.values[1], event.values[2]};
+					float[] quaternion = {0.f,0.f,0.f,0.f};
+					sensorManager.getQuaternionFromVector(quaternion,rotationVector);
+					float qw = quaternion[0]; float qx = quaternion[1];
+					float qy = quaternion[2]; float qz = quaternion[3];
+					double headingQ = Math.atan2(2*qy*qw-2*qx*qz , 1 - 2*qy*qy - 2*qz*qz);
+					double pitchQ = Math.asin(2*qx*qy + 2*qz*qw);
+					double rollQ = Math.atan2(2*qx*qw-2*qy*qz , 1 - 2*qx*qx - 2*qz*qz);
+					if ((com.ar4android.cameraAccessJME.JmeARapplication) app != null) {
+						((com.ar4android.cameraAccessJME.JmeARapplication) app).setRotation((float)pitchQ, (float)rollQ, (float)headingQ);
+					}
+					break;
+			}
+		}
+	};
 
 	private final CameraWrapper.PreviewSizeCallback mCameraPreviewSizeCallback = new CameraWrapper.PreviewSizeCallback() {
 
@@ -113,11 +167,46 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 		}
 	};
 
+	protected Sensor initSingleSensor( int type, String name ){
+		Sensor newSensor = sensorManager.getDefaultSensor(type);
+		if(newSensor != null){
+			if(sensorManager.registerListener(sensorListener, newSensor, SensorManager.SENSOR_DELAY_GAME)) {
+				Log.i(TAG, name + " successfully registered default");
+			} else {
+				Log.e(TAG, name + " not registered default");
+			}
+		} else {
+			List<Sensor> deviceSensors = sensorManager.getSensorList(type);
+			if(deviceSensors.size() > 0){
+				Sensor mySensor = deviceSensors.get(0);
+				if(sensorManager.registerListener(sensorListener, mySensor, SensorManager.SENSOR_DELAY_GAME)) {
+					Log.i(TAG, name + " successfully registered to " + mySensor.getName());
+				} else {
+					Log.e(TAG, name + " not registered to " + mySensor.getName());
+				}
+			} else {
+				Log.e(TAG, "No " + name + " sensor!");
+			}
+		}
+		return newSensor;
+	}
+
+	protected void initSensors(){
+// look specifically for the gyroscope first and then for the rotation_vector_sensor (underlying sensors vary from platform to platform)
+		gyroscopeSensor = initSingleSensor(Sensor.TYPE_GYROSCOPE, "TYPE_GYROSCOPE");
+		rotationVectorSensor = initSingleSensor(Sensor.TYPE_ROTATION_VECTOR, "TYPE_ROTATION_VECTOR");
+		accelSensor = initSingleSensor(Sensor.TYPE_ACCELEROMETER, "TYPE_ACCELEROMETER");
+		linearAccelSensor = initSingleSensor(Sensor.TYPE_LINEAR_ACCELERATION, "TYPE_LINEAR_ACCELERATION");
+		magneticFieldSensor = initSingleSensor(Sensor.TYPE_MAGNETIC_FIELD, "TYPE_MAGNETIC_FIELD");
+	}
+
+
 	public Camera2AccessJMEActivity() {
 		// Set the application class to run
 //		appClass = "com.ar4android.cameraAccessJME.CameraAccessJME";
 //		appClass = "com.ar4android.cameraAccessJME.SuperimposeJME";
-		appClass = "com.ar4android.cameraAccessJME.LocationAccessJME";
+//		appClass = "com.ar4android.cameraAccessJME.LocationAccessJME";
+		appClass = "com.ar4android.cameraAccessJME.SensorAccessJME";
 
 		// Try ConfigType.FASTEST; or ConfigType.LEGACY if you have problems
 //		eglConfigType = ConfigType.BEST;
@@ -139,6 +228,17 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+
+		// sensor setup
+		sensorManager = (SensorManager)getSystemService(SENSOR_SERVICE);
+		List<Sensor> deviceSensors = sensorManager.getSensorList(Sensor.TYPE_ALL);
+		Log.d(TAG, "Integrated sensors:");
+		for(int i = 0; i < deviceSensors.size(); ++i ) {
+			Sensor curSensor = deviceSensors.get(i);
+			Log.d(TAG, curSensor.getName() + "\t" + curSensor.getType() + "\t" + curSensor.getMinDelay() / 1000.0f);
+		}
+		initSensors();
+
 		cameraJMEImageRGB565 = new Image(Image.Format.RGB565, 0,
 				0, null, ColorSpace.Linear);
 		mPreview = new Camera2Preview(this, mCameraCallback, mCameraPreviewSizeCallback);
@@ -149,10 +249,14 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
     public void onResume() {
     	super.onResume();
 
-		// Choose screen orientation
-		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+		// make sure the AndroidGLSurfaceView view is on top of the view
+		// hierarchy
+		view.setZOrderOnTop(true);
 
-		locationManager = (LocationManager)getSystemService(LOCATION_SERVICE);
+		// Choose screen orientation
+//		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+
+		locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
 		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 0, locListener);
 
 		if (mLocation == null) {
@@ -166,14 +270,14 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 				}
 			} catch (Exception e){
 				AlertDialog.Builder builder = new AlertDialog.Builder(this);
-//Chain together various setter methods to set the dialog characteristics
+				//Chain together various setter methods to set the dialog characteristics
 				builder.setMessage("Please make sure you enabled your GPS sensor and already retrieved an initial position.").setTitle("GPS Error");
 				builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
 					public void onClick(DialogInterface dialog, int id) {
-// do nothing
+						// do nothing
 					}
 				});
-// Get the AlertDialog from create()
+				// Get the AlertDialog from create()
 				AlertDialog dialog = builder.create();
 				dialog.show();
 
@@ -197,6 +301,13 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 
 		Log.i(TAG, " ***** onPause");
 	}
+
+	@Override
+	public void onStop() {
+		super.onStop();
+		sensorManager.unregisterListener(sensorListener);
+	}
+
 
 	// prepares the Camera preview callback buffers.
 	private void preparePreviewCallbackBuffer(int mPreviewWidth, int mPreviewHeight) {
