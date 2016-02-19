@@ -769,8 +769,8 @@ public class Camera2WrapperImpl implements CameraWrapper {
                         yuv420semiPlanar.write(yBytes);
                         Log.i(TAG, "***** ImageJmeProcessing - run() - vBytes.length:" + vBytes.length + "]");
                         for (int i=0;i<vBytes.length;i++) {
-                            yuv420semiPlanar.write(uBytes[i]);
                             yuv420semiPlanar.write(vBytes[i]);
+                            yuv420semiPlanar.write(uBytes[i]);
                         }
                     } catch (IOException e) {
                         e.printStackTrace();
