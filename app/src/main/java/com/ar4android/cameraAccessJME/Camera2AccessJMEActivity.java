@@ -9,6 +9,8 @@
  */
 package com.ar4android.cameraAccessJME;
 
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.util.Log;
@@ -21,6 +23,11 @@ import com.jme3.texture.Image;
 import com.jme3.texture.image.ColorSpace;
 
 import java.nio.ByteBuffer;
+
+//include packages for Android Location API
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 
 //import com.jme3.system.android.AndroidConfigChooser.ConfigType;
 
@@ -43,6 +50,9 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 	private boolean stopPreview = false;
 	Image cameraJMEImageRGB565;
 
+	private LocationManager locationManager;
+	private Location mLocation;
+
 	private final CameraWrapper.PreviewCallback mCameraCallback = new CameraWrapper.PreviewCallback() {
 		public void onPreviewFrame(byte[] data) {
 			if (data != null && stopPreview == false) {
@@ -60,6 +70,37 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 		}
 	};
 
+	private LocationListener locListener= new LocationListener() {
+
+		private static final String TAG = "LocationListener";
+
+		@Override
+		public void onLocationChanged(Location location) {
+			Log.d(TAG, "onLocationChanged: " + location.toString());
+			mLocation = location;
+			if ((com.ar4android.cameraAccessJME.JmeARapplication) app != null) {
+				((com.ar4android.cameraAccessJME.JmeARapplication) app).setUserLocation(mLocation);
+			}
+		}
+
+		@Override
+		public void onProviderDisabled(String provider) {
+			Log.d(TAG, "onProviderDisabled: " + provider);
+		}
+
+		@Override
+		public void onProviderEnabled(String provider) {
+			Log.d(TAG, "onProviderEnabled: " + provider);
+		}
+
+		@Override
+		public void onStatusChanged(String provider, int status, Bundle extras) {
+			Log.d(TAG, "onStatusChanged: " + status);
+		}
+
+	};
+
+
 	private final CameraWrapper.PreviewSizeCallback mCameraPreviewSizeCallback = new CameraWrapper.PreviewSizeCallback() {
 
 		@Override
@@ -75,7 +116,9 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 	public Camera2AccessJMEActivity() {
 		// Set the application class to run
 //		appClass = "com.ar4android.cameraAccessJME.CameraAccessJME";
-		appClass = "com.ar4android.cameraAccessJME.SuperimposeJME";
+//		appClass = "com.ar4android.cameraAccessJME.SuperimposeJME";
+		appClass = "com.ar4android.cameraAccessJME.LocationAccessJME";
+
 		// Try ConfigType.FASTEST; or ConfigType.LEGACY if you have problems
 //		eglConfigType = ConfigType.BEST;
 		// Exit Dialog title & message
@@ -108,6 +151,36 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 
 		// Choose screen orientation
 		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+
+		locationManager = (LocationManager)getSystemService(LOCATION_SERVICE);
+		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500, 0, locListener);
+
+		if (mLocation == null) {
+			try {
+				if (locationManager != null) {
+					mLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+				}
+				Log.d(TAG, "Setting initial location: " + mLocation.toString());
+				if ((com.ar4android.cameraAccessJME.JmeARapplication) app != null) {
+					((com.ar4android.cameraAccessJME.JmeARapplication) app).setUserLocation(mLocation);
+				}
+			} catch (Exception e){
+				AlertDialog.Builder builder = new AlertDialog.Builder(this);
+//Chain together various setter methods to set the dialog characteristics
+				builder.setMessage("Please make sure you enabled your GPS sensor and already retrieved an initial position.").setTitle("GPS Error");
+				builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+					public void onClick(DialogInterface dialog, int id) {
+// do nothing
+					}
+				});
+// Get the AlertDialog from create()
+				AlertDialog dialog = builder.create();
+				dialog.show();
+
+			}
+
+		}
+
 
 		ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(1, 1);
 		addContentView(mPreview, lp);

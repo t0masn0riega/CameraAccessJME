@@ -23,7 +23,7 @@ import com.jme3.scene.shape.Quad;
 import com.jme3.texture.Image;
 import com.jme3.texture.Texture2D;
 
-public class CameraAccessJME extends SimpleApplication implements JmeARapplication {
+public class CameraAccessJME extends JmeARapplication {
 
 	private static final String TAG = "CameraAccessJME";
 	// The geometry which will represent the video background
