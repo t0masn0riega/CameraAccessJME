@@ -52,8 +52,8 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 						mPreviewBufferRGB565);
 				mPreviewByteBufferRGB565.put(mPreviewBufferRGB565);
 				cameraJMEImageRGB565.setData(mPreviewByteBufferRGB565);
-				if ((com.ar4android.cameraAccessJME.CameraAccessJME) app != null) {
-					((com.ar4android.cameraAccessJME.CameraAccessJME) app)
+				if ((com.ar4android.cameraAccessJME.JmeARapplication) app != null) {
+					((com.ar4android.cameraAccessJME.JmeARapplication) app)
 							.setTexture(cameraJMEImageRGB565);
 				}
 			}
@@ -74,7 +74,8 @@ public class Camera2AccessJMEActivity extends AndroidHarness {
 
 	public Camera2AccessJMEActivity() {
 		// Set the application class to run
-		appClass = "com.ar4android.cameraAccessJME.CameraAccessJME";
+//		appClass = "com.ar4android.cameraAccessJME.CameraAccessJME";
+		appClass = "com.ar4android.cameraAccessJME.SuperimposeJME";
 		// Try ConfigType.FASTEST; or ConfigType.LEGACY if you have problems
 //		eglConfigType = ConfigType.BEST;
 		// Exit Dialog title & message

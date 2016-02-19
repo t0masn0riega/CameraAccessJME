@@ -23,7 +23,7 @@ import com.jme3.scene.shape.Quad;
 import com.jme3.texture.Image;
 import com.jme3.texture.Texture2D;
 
-public class CameraAccessJME extends SimpleApplication {
+public class CameraAccessJME extends SimpleApplication implements JmeARapplication {
 
 	private static final String TAG = "CameraAccessJME";
 	// The geometry which will represent the video background
@@ -88,6 +88,7 @@ public class CameraAccessJME extends SimpleApplication {
 	}
 
 	// This method retrieves the preview images from the Android world and puts them into a JME image.
+	@Override
 	public void setTexture(final Image image) {
 		if (!mSceneInitialized) {
 			return;
