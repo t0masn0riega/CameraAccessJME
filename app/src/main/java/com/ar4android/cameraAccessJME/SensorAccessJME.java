@@ -206,7 +206,7 @@ public class SensorAccessJME extends JmeARapplication implements AnimEventListen
 //		pitch: cams x axis
 // 		roll: cams y axis
 //		heading: cams z axis	
-		mRotXYZQ.fromAngles(pitch , roll - FastMath.HALF_PI, 0);
+		mRotXYZQ.fromAngles(pitch  + FastMath.HALF_PI, roll - FastMath.HALF_PI, 0);
 		mCurrentCamRotation = mInitialCamRotation.mult(mRotXYZQ);
 		mNewCamRotationAvailable = true;
 	}
